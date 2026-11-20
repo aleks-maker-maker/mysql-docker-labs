@@ -1,0 +1,127 @@
+2026-11-20 10:46:40.413536  shutdown
+2026-11-20 10:46:43.906430  SELECT VERSION() AS mysql_version, @@global.general_log AS general_log, @@global.log_output AS log_output
+2026-11-20 10:46:44.093095  CREATE DATABASE sales_norm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+2026-11-20 10:46:44.097904  SELECT DATABASE()
+2026-11-20 10:46:44.098038  USE sales_norm
+2026-11-20 10:46:44.098154  CREATE TABLE sales_unnormalized_2 (
+    report_id     INT,
+    report_date   DATE,
+    customer_id   INT,
+    customer_name VARCHAR(100),
+    product_id    INT,
+    product_name  VARCHAR(100),
+    price         DECIMAL(10,2),
+    quantity      INT
+)
+2026-11-20 10:46:44.127330  INSERT INTO sales_unnormalized_2 VALUES
+(1101, '2026-03-05', 12, 'Дания',   101, 'Дыни',      800, 1100),
+(1101, '2026-03-05', 12, 'Дания',   102, 'Клубника',  150,  300),
+(1102, '2026-03-07', 23, 'Испания', 103, 'Яблоки',    120, 1700),
+(1103, '2026-03-08', 25, 'Албания', 104, 'Лимоны',    200,  500),
+(1104, '2026-03-10', 12, 'Дания',   101, 'Дыни',      800, 2500),
+(1105, '2026-03-12', 25, 'Албания', 103, 'Яблоки',    120, 2000),
+(1105, '2026-03-12', 25, 'Албания', 104, 'Лимоны',    200,  700)
+2026-11-20 10:46:44.134525  SELECT * FROM sales_unnormalized_2 ORDER BY report_id, product_id
+2026-11-20 10:46:44.364759  SELECT DATABASE()
+2026-11-20 10:46:44.364824  USE sales_norm
+2026-11-20 10:46:44.364884  START TRANSACTION
+2026-11-20 10:46:44.364954  UPDATE sales_unnormalized_2 SET customer_name = 'Дания (новое название)'
+WHERE report_id = 1101 AND product_id = 101
+2026-11-20 10:46:44.365169  SELECT DISTINCT customer_id, customer_name FROM sales_unnormalized_2 WHERE customer_id = 12
+2026-11-20 10:46:44.365344  ROLLBACK
+2026-11-20 10:46:44.366861  START TRANSACTION
+2026-11-20 10:46:44.366938  DELETE FROM sales_unnormalized_2 WHERE report_id = 1102
+2026-11-20 10:46:44.367058  SELECT COUNT(*) AS rows_for_customer_23 FROM sales_unnormalized_2 WHERE customer_id = 23
+2026-11-20 10:46:44.367185  ROLLBACK
+2026-11-20 10:46:44.369050  START TRANSACTION
+2026-11-20 10:46:44.369137  INSERT INTO sales_unnormalized_2 (customer_id, customer_name) VALUES (99, 'Новый покупатель')
+2026-11-20 10:46:44.369242  SELECT * FROM sales_unnormalized_2 WHERE customer_id = 99
+2026-11-20 10:46:44.369357  ROLLBACK
+2026-11-20 10:46:44.817864  SELECT DATABASE()
+2026-11-20 10:46:44.817930  USE sales_norm
+2026-11-20 10:46:44.818033  CREATE TABLE customers (
+    customer_id INT PRIMARY KEY,
+    customer_name VARCHAR(100) NOT NULL
+)
+2026-11-20 10:46:44.839735  CREATE TABLE products (
+    product_id INT PRIMARY KEY,
+    product_name VARCHAR(100) NOT NULL,
+    price DECIMAL(10,2) NOT NULL
+)
+2026-11-20 10:46:44.858440  CREATE TABLE reports (
+    report_id INT PRIMARY KEY,
+    report_date DATE NOT NULL,
+    customer_id INT NOT NULL,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+)
+2026-11-20 10:46:44.887979  CREATE TABLE report_items (
+    report_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    PRIMARY KEY (report_id, product_id),
+    FOREIGN KEY (report_id) REFERENCES reports(report_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+)
+2026-11-20 10:46:44.916358  START TRANSACTION
+2026-11-20 10:46:44.916491  INSERT INTO customers SELECT DISTINCT customer_id, customer_name FROM sales_unnormalized_2
+2026-11-20 10:46:44.917017  INSERT INTO products SELECT DISTINCT product_id, product_name, price FROM sales_unnormalized_2
+2026-11-20 10:46:44.917486  INSERT INTO reports SELECT DISTINCT report_id, report_date, customer_id FROM sales_unnormalized_2
+2026-11-20 10:46:44.917951  INSERT INTO report_items SELECT report_id, product_id, quantity FROM sales_unnormalized_2
+2026-11-20 10:46:44.918362  COMMIT
+2026-11-20 10:46:44.922734  SHOW TABLES
+2026-11-20 10:46:44.923338  SHOW CREATE TABLE report_items
+2026-11-20 10:46:45.186423  SELECT DATABASE()
+2026-11-20 10:46:45.186527  USE sales_norm
+2026-11-20 10:46:45.186689  SELECT 'исходная' AS scheme, COUNT(DISTINCT report_id) AS reports,
+       COUNT(DISTINCT customer_id) AS customers, COUNT(DISTINCT product_id) AS products,
+       COUNT(*) AS items, SUM(price * quantity) AS total
+FROM sales_unnormalized_2
+UNION ALL
+SELECT '3НФ', COUNT(DISTINCT r.report_id), COUNT(DISTINCT r.customer_id),
+       COUNT(DISTINCT p.product_id), COUNT(*), SUM(p.price * i.quantity)
+FROM report_items i JOIN reports r USING (report_id) JOIN products p USING (product_id)
+2026-11-20 10:46:45.187121  SELECT SUM(p.price * i.quantity) AS total_customer_12
+FROM reports r JOIN report_items i USING (report_id) JOIN products p USING (product_id)
+WHERE r.customer_id = 12
+2026-11-20 10:46:45.187366  SELECT r.report_id, COUNT(*) AS item_count, SUM(p.price * i.quantity) AS report_total
+FROM reports r JOIN report_items i USING (report_id) JOIN products p USING (product_id)
+GROUP BY r.report_id
+ORDER BY r.report_id
+2026-11-20 10:46:45.187611  SELECT
+    (SELECT COUNT(*) FROM sales_unnormalized_2) = (SELECT COUNT(*) FROM report_items)
+    AND (SELECT COUNT(DISTINCT report_id) FROM sales_unnormalized_2) = (SELECT COUNT(*) FROM reports)
+    AND (SELECT COUNT(DISTINCT customer_id) FROM sales_unnormalized_2) = (SELECT COUNT(*) FROM customers)
+    AND (SELECT COUNT(DISTINCT product_id) FROM sales_unnormalized_2) = (SELECT COUNT(*) FROM products)
+    AND (SELECT SUM(price * quantity) FROM sales_unnormalized_2) =
+        (SELECT SUM(p.price * i.quantity) FROM report_items i JOIN products p USING (product_id))
+    AND NOT EXISTS (
+        SELECT 1
+        FROM sales_unnormalized_2 s
+        LEFT JOIN reports r ON r.report_id = s.report_id AND r.report_date = s.report_date
+            AND r.customer_id = s.customer_id
+        LEFT JOIN customers c ON c.customer_id = r.customer_id AND c.customer_name = s.customer_name
+        LEFT JOIN report_items i ON i.report_id = r.report_id AND i.product_id = s.product_id
+            AND i.quantity = s.quantity
+        LEFT JOIN products p ON p.product_id = i.product_id AND p.product_name = s.product_name
+            AND p.price = s.price
+        WHERE c.customer_id IS NULL OR p.product_id IS NULL
+    ) AS normalization_ok
+2026-11-20 10:46:45.499268  SELECT DATABASE()
+2026-11-20 10:46:45.499339  USE sales_norm
+2026-11-20 10:46:45.499401  START TRANSACTION
+2026-11-20 10:46:45.499504  UPDATE customers SET customer_name = 'Дания (новое название)' WHERE customer_id = 12
+2026-11-20 10:46:45.499879  SELECT r.report_id, c.customer_name FROM reports r JOIN customers c USING (customer_id)
+WHERE c.customer_id = 12 ORDER BY r.report_id
+2026-11-20 10:46:45.500083  ROLLBACK
+2026-11-20 10:46:45.502601  START TRANSACTION
+2026-11-20 10:46:45.502749  DELETE FROM report_items WHERE report_id = 1102
+2026-11-20 10:46:45.503037  DELETE FROM reports WHERE report_id = 1102
+2026-11-20 10:46:45.503176  SELECT * FROM customers WHERE customer_id = 23
+2026-11-20 10:46:45.503302  ROLLBACK
+2026-11-20 10:46:45.504078  START TRANSACTION
+2026-11-20 10:46:45.504161  INSERT INTO customers (customer_id, customer_name) VALUES (99, 'Новый покупатель')
+2026-11-20 10:46:45.504286  SELECT c.customer_id, c.customer_name, r.report_id
+FROM customers c LEFT JOIN reports r USING (customer_id) WHERE c.customer_id = 99
+2026-11-20 10:46:45.504427  ROLLBACK
+2026-11-20 10:46:45.505873  RENAME TABLE sales_unnormalized_2 TO sales_source_verified
+2026-11-20 10:46:45.518769  SHOW TABLES
